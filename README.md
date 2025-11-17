@@ -6,6 +6,7 @@ Tool for playing with securable objects on Windows. This has been almost complet
 I'm building against VS2022 using cmake. I know Windows but I do not know CMake. Your mileage may vary when running build.bat
 
 ```cmake --version
-cmake version 4.1.2```
+cmake version 4.1.2
+```
 
 
