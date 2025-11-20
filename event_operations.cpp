@@ -35,34 +35,40 @@ int ProcessEventCommand(const std::wstring& eventName, const std::wstring& comma
     }
 
     bool requiresTakeOwnership = false;
+    bool requiresRestorePrivilege = false;
     DWORD desiredAccess = 0;
     
     if (command == L"set" || command == L"unset") {
         desiredAccess = EVENT_MODIFY_STATE;
     } else if (command == L"harden") {
-        desiredAccess = READ_CONTROL | WRITE_DAC;
+        requiresRestorePrivilege = true; // Needed to set the owner to SYSTEM
+        requiresTakeOwnership = true; // needed to set WRITE_DAC
+        desiredAccess = WRITE_DAC | WRITE_OWNER;
     } else if (command == L"query") {
         desiredAccess = SYNCHRONIZE;
     } else if (command == L"takeown") {
         desiredAccess = WRITE_OWNER;
         requiresTakeOwnership = true;
     } else if (command == L"weaken") {
-        desiredAccess = WRITE_OWNER | WRITE_DAC;
-        requiresTakeOwnership = true;
+        desiredAccess = WRITE_DAC;
     } else {
         std::wcerr << L"Unknown event command: " << command << L"\n";
         std::wcerr << L"Valid commands: set, unset, harden, query, takeown, weaken\n";
         return 1;
     }
 
-    // Enable SE_TAKE_OWNERSHIP_NAME privilege if taking ownership
-    // PrivilegeGuard will automatically disable on scope exit
-    PrivilegeGuard privilegeGuard(requiresTakeOwnership ? SE_TAKE_OWNERSHIP_NAME : nullptr);
-    
-    if (privilegeGuard.IsValid() && !privilegeGuard.IsEnabled()) {
+    // Enable SE_TAKE_OWNERSHIP_NAME privilege for WRITE_OWNER access
+    PrivilegeGuard takeownPrivilegeGuard(requiresTakeOwnership ? SE_TAKE_OWNERSHIP_NAME : nullptr);    
+    if (takeownPrivilegeGuard.IsValid() && !takeownPrivilegeGuard.IsEnabled()) {
         return 1;  // Error message already printed by PrivilegeGuard
     }
 
+    // Enable SE_RESTORE_NAME privilege if setting owner (allows setting arbitrary owners)
+    PrivilegeGuard restorePrivilegeGuard(requiresRestorePrivilege ? SE_RESTORE_NAME : nullptr);    
+    if (restorePrivilegeGuard.IsValid() && !restorePrivilegeGuard.IsEnabled()) {
+        return 1;  // Error message already printed by PrivilegeGuard
+    }
+    
     std::wcout << L"Opening event: " << fullEventName << L" with permissions: 0x" << std::hex << desiredAccess << std::dec << L"\n";
 
     HANDLE eventHandle = OpenEventW(desiredAccess, FALSE, fullEventName.c_str());
@@ -98,14 +104,9 @@ int ProcessEventCommand(const std::wstring& eventName, const std::wstring& comma
             std::wcout << L"Event ownership transferred to Administrators\n";
         }
     } else if (command == L"weaken") {
-        DWORD result = TakeOwnership(eventHandle, SE_KERNEL_OBJECT);
-        if (result == ERROR_SUCCESS) {
-            success = WeakenAcl(eventHandle, SE_KERNEL_OBJECT, EVENT_ALL_ACCESS);
-            if (success) {
-                std::wcout << L"Event ACL weakened successfully (Everyone has full access)\n";
-            }
-        } else {
-            success = false;
+        success = WeakenAcl(eventHandle, SE_KERNEL_OBJECT, EVENT_ALL_ACCESS);
+        if (success) {
+            std::wcout << L"Event ACL weakened successfully (Everyone has full access)\n";
         }
     } else {  // query
         success = QueryEventState(eventHandle);

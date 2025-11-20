@@ -25,6 +25,23 @@ void PrintLastError(const wchar_t* context) {
     }
 }
 
+void PrintDacl(PACL dacl) {
+    SECURITY_DESCRIPTOR sd;
+    InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
+    SetSecurityDescriptorDacl(&sd, TRUE, dacl, FALSE);
+    
+    LPWSTR daclSddl = nullptr;
+    if (ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            &sd, SDDL_REVISION_1, DACL_SECURITY_INFORMATION, 
+            &daclSddl, nullptr)) {
+        std::wcout << L"Setting DACL: " << daclSddl << L"\n";
+        LocalFree(daclSddl);
+    }
+    else {
+        PrintLastError(L"ConvertSecurityDescriptorToStringSecurityDescriptor");
+    }
+}
+
 bool SetRestrictiveAcl(HANDLE handle, SE_OBJECT_TYPE objectType, DWORD systemAccessMask, DWORD everyoneAccessMask) {
     BYTE systemSidBuffer[SECURITY_MAX_SID_SIZE];
     BYTE interactiveSidBuffer[SECURITY_MAX_SID_SIZE];
@@ -68,14 +85,33 @@ bool SetRestrictiveAcl(HANDLE handle, SE_OBJECT_TYPE objectType, DWORD systemAcc
         return false;
     }
 
+    PrintDacl(newDacl);
+
     result = SetSecurityInfo(handle, objectType, DACL_SECURITY_INFORMATION, nullptr, nullptr, newDacl, nullptr);
     LocalFree(newDacl);
 
     if (result != ERROR_SUCCESS) {
         SetLastError(result);
-        PrintLastError(L"SetSecurityInfo");
+        PrintLastError(L"SetSecurityInfo (DACL)");
         return false;
     }
+
+    // Convert owner SID to SDDL and print it
+    LPWSTR ownerSddl = nullptr;
+    if (ConvertSidToStringSidW(systemSid, &ownerSddl)) {
+        std::wcout << L"Setting Owner: " << ownerSddl << L"\n";
+        LocalFree(ownerSddl);
+    }
+
+    // Set owner to LOCAL SYSTEM
+    // Requires SE_RESTORE_NAME privilege (must be enabled before calling this function)
+    result = SetSecurityInfo(handle, objectType, OWNER_SECURITY_INFORMATION, systemSid, nullptr, nullptr, nullptr);
+    if (result != ERROR_SUCCESS) {
+        SetLastError(result);
+        PrintLastError(L"SetSecurityInfo (Owner)");
+        return false;
+    }
+
     return true;
 }
 
@@ -106,6 +142,8 @@ bool WeakenAcl(HANDLE handle, SE_OBJECT_TYPE objectType, DWORD fullAccessMask) {
         PrintLastError(L"SetEntriesInAcl");
         return false;
     }
+
+    PrintDacl(newDacl);
 
     result = SetSecurityInfo(handle, objectType, DACL_SECURITY_INFORMATION, nullptr, nullptr, newDacl, nullptr);
     LocalFree(newDacl);
@@ -149,33 +187,25 @@ DWORD SetPrivilege(LPCWSTR privilegeName, bool enable) {
 }
 
 DWORD TakeOwnership(HANDLE handle, SE_OBJECT_TYPE objectType) {
-    // Enable SE_TAKE_OWNERSHIP_NAME privilege
-    DWORD privResult = SetPrivilege(SE_TAKE_OWNERSHIP_NAME, true);
-    if (privResult != ERROR_SUCCESS) {
-        return privResult;
-    }
-
-    DWORD result = ERROR_SUCCESS;
-
     BYTE adminsSidBuffer[SECURITY_MAX_SID_SIZE];
     DWORD adminsSidSize = sizeof(adminsSidBuffer);
 
     if (!CreateWellKnownSid(WinBuiltinAdministratorsSid, nullptr, adminsSidBuffer, &adminsSidSize)) {
-        result = GetLastError();
+        DWORD result = GetLastError();
         PrintLastError(L"CreateWellKnownSid(WinBuiltinAdministratorsSid)");
-    } else {
-        PSID adminsSid = adminsSidBuffer;
-
-        result = SetSecurityInfo(handle, objectType, OWNER_SECURITY_INFORMATION, 
-                                       adminsSid, nullptr, nullptr, nullptr);
-        if (result != ERROR_SUCCESS) {
-            SetLastError(result);
-            PrintLastError(L"SetSecurityInfo");
-        }
+        return result;
     }
 
-    // Always disable the privilege (ignore errors from disabling)
-    SetPrivilege(SE_TAKE_OWNERSHIP_NAME, false);
+    PSID adminsSid = adminsSidBuffer;
+
+    // Set owner to Administrators group
+    // Requires SE_TAKE_OWNERSHIP_NAME privilege (must be enabled before calling this function)
+    DWORD result = SetSecurityInfo(handle, objectType, OWNER_SECURITY_INFORMATION, 
+                                   adminsSid, nullptr, nullptr, nullptr);
+    if (result != ERROR_SUCCESS) {
+        SetLastError(result);
+        PrintLastError(L"SetSecurityInfo (Owner)");
+    }
 
     return result;
 }

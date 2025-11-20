@@ -17,6 +17,7 @@ public:
         DWORD result = SetPrivilege(privilegeName_, true);
         if (result == ERROR_SUCCESS) {
             enabled_ = true;
+            std::wcout << L"-->Enabled privilege: " << privilegeName_ << L"\n";
         } else {
             std::wcerr << L"Failed to enable privilege: " << privilegeName_ << L"\n";
         }
@@ -25,6 +26,7 @@ public:
     ~PrivilegeGuard() {
         if (enabled_ && privilegeName_ != nullptr) {
             SetPrivilege(privilegeName_, false);
+            std::wcout << L"<--Disabled privilege: " << privilegeName_ << L"\n";
         }
     }
     
