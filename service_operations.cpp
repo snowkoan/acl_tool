@@ -107,6 +107,7 @@ int ProcessServiceCommand(const std::wstring& serviceName, const std::wstring& c
 
     bool success = false;
     if (command == L"start") {
+        std::wcout << L"Starting service...\n";
         success = StartServiceW(serviceHandle, 0, nullptr) != 0;
         if (success) {
             std::wcout << L"Service started successfully\n";
@@ -115,6 +116,7 @@ int ProcessServiceCommand(const std::wstring& serviceName, const std::wstring& c
         }
     } else if (command == L"stop") {
         SERVICE_STATUS status;
+        std::wcout << L"Stopping service...\n";
         success = ControlService(serviceHandle, SERVICE_CONTROL_STOP, &status) != 0;
         if (success) {
             std::wcout << L"Service stopped successfully\n";
