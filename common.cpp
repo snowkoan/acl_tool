@@ -115,13 +115,17 @@ bool SetRestrictiveAcl(HANDLE handle, SE_OBJECT_TYPE objectType, DWORD systemAcc
     return true;
 }
 
-bool WeakenAcl(HANDLE handle, SE_OBJECT_TYPE objectType, DWORD fullAccessMask) {
+// internal linkage
+namespace {
+
+// Caller is responsibele  for freeing the returned PACL using LocalFree
+PACL CreateEveryoneFullAccessDacl(DWORD fullAccessMask) {
     BYTE everyoneSidBuffer[SECURITY_MAX_SID_SIZE];
     DWORD everyoneSidSize = sizeof(everyoneSidBuffer);
 
     if (!CreateWellKnownSid(WinWorldSid, nullptr, everyoneSidBuffer, &everyoneSidSize)) {
         PrintLastError(L"CreateWellKnownSid(WinWorldSid)");
-        return false;
+        return nullptr;
     }
 
     PSID everyoneSid = everyoneSidBuffer;
@@ -140,17 +144,49 @@ bool WeakenAcl(HANDLE handle, SE_OBJECT_TYPE objectType, DWORD fullAccessMask) {
     if (result != ERROR_SUCCESS) {
         SetLastError(result);
         PrintLastError(L"SetEntriesInAcl");
+        return nullptr;
+    }
+
+    return newDacl;
+}
+
+}  // namespace
+
+bool WeakenAcl(HANDLE handle, SE_OBJECT_TYPE objectType, DWORD fullAccessMask) {
+    PACL newDacl = CreateEveryoneFullAccessDacl(fullAccessMask);
+    if (!newDacl) {
         return false;
     }
 
     PrintDacl(newDacl);
 
-    result = SetSecurityInfo(handle, objectType, DACL_SECURITY_INFORMATION, nullptr, nullptr, newDacl, nullptr);
+    DWORD result = SetSecurityInfo(handle, objectType, DACL_SECURITY_INFORMATION, nullptr, nullptr, newDacl, nullptr);
     LocalFree(newDacl);
 
     if (result != ERROR_SUCCESS) {
         SetLastError(result);
         PrintLastError(L"SetSecurityInfo");
+        return false;
+    }
+    return true;
+}
+
+bool WeakenAclByName(const wchar_t* objectName, SE_OBJECT_TYPE objectType, DWORD fullAccessMask) {
+    PACL newDacl = CreateEveryoneFullAccessDacl(fullAccessMask);
+    if (!newDacl) {
+        return false;
+    }
+
+    PrintDacl(newDacl);
+
+    // Use SetNamedSecurityInfo which works with privileges, not handle access rights
+    DWORD result = SetNamedSecurityInfoW(const_cast<LPWSTR>(objectName), objectType, 
+                                         DACL_SECURITY_INFORMATION, nullptr, nullptr, newDacl, nullptr);
+    LocalFree(newDacl);
+
+    if (result != ERROR_SUCCESS) {
+        SetLastError(result);
+        PrintLastError(L"SetNamedSecurityInfo");
         return false;
     }
     return true;

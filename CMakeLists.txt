@@ -7,6 +7,7 @@ add_executable(AclTool
     event_operations.cpp
     service_operations.cpp
     process_operations.cpp
+    file_operations.cpp
 )
 target_compile_features(AclTool PRIVATE cxx_std_17)
 target_compile_definitions(AclTool PRIVATE UNICODE _UNICODE)

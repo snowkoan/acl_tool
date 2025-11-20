@@ -7,27 +7,32 @@
 #include "event_operations.h"
 #include "service_operations.h"
 #include "process_operations.h"
+#include "file_operations.h"
 
 int wmain(int argc, wchar_t* argv[]) {
     if (argc != 4) {
-        std::wcerr << L"Usage: AclTool.exe [event <event-name>|--service <service-name>|--process> PID|process-name] <command>\n\n";
+        std::wcerr << L"Usage: AclTool.exe [--event <event-name>|--service <service-name>|--process <PID|process-name>|--file <file-path>] <command>\n\n";
         std::wcerr << L"Event commands:\n";
         std::wcerr << L"  set      : Set the event to signaled state\n";
         std::wcerr << L"  unset    : Reset the event to non-signaled state\n";
-        std::wcerr << L"  harden   : Apply restrictive ACL (SYSTEM full, INTERACTIVE wait)\n";
-        std::wcerr << L"  query    : Query the event state\n";
+        std::wcerr << L"  harden   : Apply restrictive ACL\n";
+        std::wcerr << L"  query    : Query the event state (this will reset synchronization events)\n";
         std::wcerr << L"  takeown  : Transfer ownership to Administrators\n";
         std::wcerr << L"  weaken   : Grant Everyone full access\n\n";
         std::wcerr << L"Service commands:\n";
         std::wcerr << L"  start    : Start the service\n";
         std::wcerr << L"  stop     : Stop the service\n";
         std::wcerr << L"  query    : Query the service status\n";
-        std::wcerr << L"  harden   : Apply restrictive ACL (SYSTEM full, INTERACTIVE query)\n";
+        std::wcerr << L"  harden   : Apply restrictive ACL\n";
         std::wcerr << L"  takeown  : Transfer ownership to Administrators\n";
         std::wcerr << L"  weaken   : Grant Everyone full access\n\n";
         std::wcerr << L"Process commands:\n";
         std::wcerr << L"  terminate: Terminate the process\n";
-        std::wcerr << L"  harden   : Apply restrictive ACL (SYSTEM full, INTERACTIVE query)\n";
+        std::wcerr << L"  harden   : Apply restrictive ACL (spoiler alert - this is useless thanks to SE_DEBUG_NAME)\n";
+        std::wcerr << L"  takeown  : Transfer ownership to Administrators\n";
+        std::wcerr << L"  weaken   : Grant Everyone full access\n\n";
+        std::wcerr << L"File commands:\n";
+        std::wcerr << L"  harden   : Apply restrictive ACL\n";
         std::wcerr << L"  takeown  : Transfer ownership to Administrators\n";
         std::wcerr << L"  weaken   : Grant Everyone full access\n";
         return 1;
@@ -55,9 +60,11 @@ int wmain(int argc, wchar_t* argv[]) {
         }
         
         return ProcessProcessCommand(processId, command);
+    } else if (objectType == L"--file") {
+        return ProcessFileCommand(objectName, command);
     } else {
         std::wcerr << L"Unknown object type: " << objectType << L"\n";
-        std::wcerr << L"Valid types: --event, --service, --process\n";
+        std::wcerr << L"Valid types: --event, --service, --process, --file\n";
         return 1;
     }
 }
